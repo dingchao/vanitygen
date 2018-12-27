@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 //	"strings"
 	"time"
-	"runtime/debug"
-	"fmt"
+        "runtime"
+        "sync"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	log "github.com/sirupsen/logrus"
@@ -24,9 +24,17 @@ func (ec *EthCmd) Execute(args []string) ([]string, error) {
 	//prefix := strings.ToLower(ec.Pattern)
 	prefix := ec.Pattern
 
-	fmt.Println("--------------------------")
-	debug.PrintStack()
-	fmt.Println("--------------------------")
+//	fmt.Println("--------------------------")
+//	debug.PrintStack()
+//	fmt.Println("--------------------------")
+
+        ch := make(chan string, 2)
+        lock := &sync.Mutex{}
+        
+        loop := runtime.NumCPU() 
+
+        for i := 0; i < loop; i++ {
+                go func(){
 
 	var numAttempts int64 = 0
 	addrStr := ""
@@ -41,17 +49,29 @@ func (ec *EthCmd) Execute(args []string) ([]string, error) {
 		if matchPrefix(addrStr, prefix) {
 			keyStr = hex.EncodeToString(crypto.FromECDSA(key))
 			// fmt.Println("pub:", hex.EncodeToString(crypto.FromECDSAPub(&key.PublicKey)))
+                        lock.Lock()
+                        ch <-addrStr
+                        ch <-keyStr
+                        lock.Unlock()
+
 			break
 		}
 	}
+        }()
+
+        }
+
+        Addr :=  <-ch
+        Wif := <-ch
+        //defer close(ch)
 
         var result []string
         //result = append(result, time.Since(beginTime))
-        result = append(result, addrStr)
-        result = append(result, keyStr)
+        result = append(result, Addr)
+        result = append(result, Wif)
 
-	log.Infof("\nElapsed: %s\naddr: 0x%s\npvt: 0x%s\nattempts: %d.\n",
-		time.Since(beginTime), addrStr, keyStr, numAttempts)
+	log.Infof("\nElapsed: %s\naddr: 0x%s\npvt: 0x%s\n",
+		time.Since(beginTime), Addr, Wif)
 
 	return result,nil
 }

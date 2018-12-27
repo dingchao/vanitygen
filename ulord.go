@@ -1,10 +1,11 @@
 package main
 
 import (
-//	"strings"
+	"reflect"
 	"time"
 	"fmt"
-	"reflect"
+        "runtime"
+	"sync"
 
 	"github.com/ulordsuite/ulord/ulordec"
 	"github.com/ulordsuite/ulord/chaincfg"
@@ -51,11 +52,19 @@ func (ulord *UlordCmd) Execute(args []string) ([]string, error) {
 	default:
 		chainParams = &chaincfg.MainNetParams
 	}
+	
+	ch := make(chan string, 2)
+	lock := &sync.Mutex{}
+	
+	loop := runtime.NumCPU() 
+	fmt.Println("loop:",loop)
 
-	var numAttempts int64 = 0
-	foundAddr := ""
-	foundWif := ""
-	for {
+	for i := 0; i < loop; i++ {
+		go func(){
+		var numAttempts int64 = 0
+		foundAddr := ""
+		foundWif := ""
+		for {
 		numAttempts++
 
 		privKey, err := ulordec.NewPrivateKey(ulordec.S256())
@@ -78,19 +87,31 @@ func (ulord *UlordCmd) Execute(args []string) ([]string, error) {
 				log.Fatalf("failed to get wif: %s", err)
 			}
 			foundWif = wif.String()
+			log.Infof("privkey:%s\n",privKey)
+			lock.Lock()
+			ch <-foundAddr
+			ch <-foundWif
+			lock.Unlock()
 			break
 		}
 	}
+        }()
 
-        var result []string
-        //result = append(result, time.Since(beginTime))
-        result = append(result, foundAddr)
-        result = append(result, foundWif)
+        }
 
-	log.Infof("\nElapsed: %s\naddr: %s\nwif: %s\nattempts: %d.\n",
-		time.Since(beginTime), foundAddr, foundWif, numAttempts)
+        Addr :=  <-ch
+        Wif := <-ch
+	//defer close(ch)
 
-	return result,nil
+	var result []string
+	//result = append(result, time.Since(beginTime))
+	result = append(result, Addr)
+	result = append(result, Wif)
+
+	log.Infof("\nElapsed: %s\naddr: %s\nwif: %s\n",
+		time.Since(beginTime), Addr, Wif)
+
+	return result, nil
 }
 
 

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 	"fmt"
+        "runtime"
+	"sync"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -42,11 +44,20 @@ func (bc *BtcCmd) Execute(args []string) ([]string ,error) {
 	default:
 		chainParams = &chaincfg.MainNetParams
 	}
+	
+	ch := make(chan string, 2)
+	lock := &sync.Mutex{}
+	//wartgrop := sync.WaitGroup{}
+	//wartgrop.add(1)
+	
+	loop := runtime.NumCPU() 
 
-	var numAttempts int64 = 0
-	foundAddr := ""
-	foundWif := ""
-	for {
+	for i := 0; i < loop; i++ {
+		go func(){
+		var numAttempts int64 = 0
+		foundAddr := ""
+		foundWif := ""
+		for {
 		numAttempts++
 
 		privKey, err := btcec.NewPrivateKey(btcec.S256())
@@ -68,18 +79,33 @@ func (bc *BtcCmd) Execute(args []string) ([]string ,error) {
 				log.Fatalf("failed to get wif: %s", err)
 			}
 			foundWif = wif.String()
-			fmt.Println("privKey:",privKey, "\naddrPubKey:", addrPubKey)
+			log.Infof("privkey:%s\n",privKey)
+			lock.Lock()
+			ch <-foundAddr
+			ch <-foundWif
+			lock.Unlock()
+//			close(ch)
 			break
 		}
 	}
-	
+        }()
+
+        }
+
+        Addr :=  <-ch
+        Wif := <-ch
+	//defer close(ch)
+
+	//for i := 0; i < loop; i++{
+	//	runtime.Goexit()
+	//}
 	var result []string
 	//result = append(result, time.Since(beginTime))
-	result = append(result, foundAddr)
-	result = append(result, foundWif)
+	result = append(result, Addr)
+	result = append(result, Wif)
 
-	log.Infof("\nElapsed: %s\naddr: %s\nwif: %s\nattempts: %d.\n",
-		time.Since(beginTime), foundAddr, foundWif, numAttempts)
+	log.Infof("\nElapsed: %s\naddr: %s\nwif: %s\n",
+		time.Since(beginTime), Addr, Wif)
 
 	return result, nil
 }
